@@ -4,14 +4,14 @@ from lxml import etree
 import csv
 import re
 
-url = "https://www.smzdm.com/fenlei/zhinengshouji/"
-url_list = ['https://www.smzdm.com/fenlei/zhinengshouji',
-            'https://www.smzdm.com/fenlei/zhinengshouji/p2/#feed-main'
-            'https://www.smzdm.com/fenlei/zhinengshouji/p3/#feed-main',
-            'https://www.smzdm.com/fenlei/zhinengshouji/p4/#feed-main',
-            'https://www.smzdm.com/fenlei/zhinengshouji/p5/#feed-main',
-            'https://www.smzdm.com/fenlei/zhinengshouji/p6/#feed-main',
-            'https://www.smzdm.com/fenlei/zhinengshouji/p7/#feed-main']
+url = "https://www.smzdm.com/fenlei/nuanshoubao/"
+url_list = ['https://www.smzdm.com/fenlei/nuanshoubao',
+            'https://www.smzdm.com/fenlei/nuanshoubao/p2/#feed-main'
+            'https://www.smzdm.com/fenlei/nuanshoubao/p3/#feed-main',
+            'https://www.smzdm.com/fenlei/nuanshoubao/p4/#feed-main',
+            'https://www.smzdm.com/fenlei/nuanshoubao/p5/#feed-main',
+            'https://www.smzdm.com/fenlei/nuanshoubao/p6/#feed-main',
+            'https://www.smzdm.com/fenlei/nuanshoubao/p7/#feed-main']
 
 headers = {"User-Agent":
            'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.106 Safari/537.36'}
@@ -43,8 +43,6 @@ for url in url_list:
         #    format_price = re.findall(format_price, r'^\w+$')[0]
         # print('价格：', re.sub(r'\D', '', format_price))
         format_price1 = re.sub(r'\D', '', format_price)
-        if len(format_price) == 0:
-            break
         # print('item_list', len(item_list), item_list)
         # print('index: ', index)
         # print('href: ', href)
@@ -59,7 +57,7 @@ for url in url_list:
 # 排序第三个字段
 notebook_list.sort(key=lambda k: (k.get('price1', 0)))
 
-with open('..\output\mobile.csv', 'w', newline='', encoding='utf-8') as csvfile:
+with open('..\output\\nuanshoubao.csv', 'w', newline='', encoding='utf-8') as csvfile:
     fieldnames = ['name', 'href', 'price', 'price1']
     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
     writer.writeheader()
