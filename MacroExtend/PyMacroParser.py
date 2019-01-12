@@ -18,7 +18,8 @@ class PyMacroParser:
     tree = []
     branch = tree
     node_count = 0
-    pre_micro = []
+    pre_macro = set()
+    macro_list = {}
 
     def load(self, f):
         """
@@ -32,6 +33,7 @@ class PyMacroParser:
 
         node_id = 0
         parent_id = 0
+        pos = 1
         comment_stack = ['#']
         for raw_line in line_list:
             print("当前行:", raw_line)
@@ -85,7 +87,8 @@ class PyMacroParser:
                     self.node_count = self.node_count + 1
                     parent_id = node_id
                     node_id = self.node_count
-                    added_list = [{'id': node_id, 'parent': parent_id}, {key_name: ''}, [], []]
+                    node_pos = 2
+                    added_list = [{'id': node_id, 'parent': parent_id, 'pos': node_pos}, {key_name: ''}, [], []]
                     self.branch.append(added_list)
                     self.branch = self.branch[-1][3]
 
@@ -95,17 +98,22 @@ class PyMacroParser:
                     self.node_count = self.node_count + 1
                     parent_id = node_id
                     node_id = self.node_count
-                    added_list = [{'id': node_id, 'parent': parent_id}, {key_name: ''}, [], []]
+                    node_pos = 1
+                    added_list = [{'id': node_id, 'parent': parent_id, 'pos': node_pos}, {key_name: ''}, [], []]
                     self.branch.append(added_list)
                     self.branch = self.branch[-1][2]
 
                     pass
                 elif current_word == '#else':
                     # 找到当前编号的右节点
-                    result, new_branch = self.__search(self.tree, node_id, 2)
+                    if node_pos == 1:
+                        node_pos = 2
+                    else:
+                        node_pos = 1
+                    result, new_branch = self.__search(self.tree, node_id, node_pos)
                     print('new branch:', str(result), str(new_branch))
                     logging.debug('new branch:' + str(result) + str(new_branch))
-                    self.branch = new_branch[2]
+                    self.branch = new_branch[3]
                     parent_id = new_branch[1]
                     node_id = new_branch[0]
 
@@ -122,17 +130,29 @@ class PyMacroParser:
 
                 elif current_word == '#endif':
                     # 找到当前编号的右节点
-                    result, new_branch = self.__search(self.tree, parent_id, 1)
+                    result, new_branch = self.__search(self.tree, parent_id, -1)
                     print('new branch:', str(result), str(new_branch))
                     logging.debug('new branch:' + str(result) + str(new_branch))
-                    self.branch = new_branch[2]
+                    self.branch = new_branch[3]
+                    node_pos = new_branch[2]
                     parent_id = new_branch[1]
                     node_id = new_branch[0]
                     pass
                 elif current_word == '#undef':
+                    i = i + 1
+                    added_dict = {}
+                    key_name = word_list[i]
+                    if i + 1 < length:
+                        i = i + 1
+                        value_name = word_list[i]
+                        added_item = {key_name: value_name}
+                    else:
+                        added_item = {key_name: ''}
+                    added_dict.update(added_item)
+                    added_dict.update({'reverse': 1})
+                    self.branch.append(added_dict)
                     pass
-                elif current_word[:2] == '/*':
-                    pass
+
                 print('tree:')
                 pprint(self.tree, indent=2)
                 logging.debug('tree:')
@@ -153,9 +173,20 @@ class PyMacroParser:
         :param s:
         :return:
         """
-        micro_list = s.split(';')
-        self.pre_micro.extend(micro_list)
-        pass
+        pre_macro_list = s.split(';')
+        if self.pre_macro:
+            self.pre_macro.clear()
+        self.pre_macro.update(pre_macro_list)
+
+        if self.macro_list:
+            self.macro_list.clear()
+        pre_dict = {}
+        tmp_list = list(self.pre_macro)
+        item = {}
+        for macro in tmp_list:
+            item[macro] = ''
+            pre_dict.update(item)
+        self.macro_list.update(pre_dict)
 
     def dumpDict(self):
         """
@@ -164,7 +195,37 @@ class PyMacroParser:
         若有与宏名对应的常量转为python数据对象，无常量则存为None, 注意不要返回类中内置的对象的引用。
         :return:
         """
-        
+        stack = []
+        if self.tree:
+            stack.append(self.tree)
+
+        while len(stack):
+            current_node = stack.pop()
+            for item in current_node:
+                if isinstance(item, list):
+                    # 获取 分支变量
+                    print('item', item)
+                    branch_value = item[1]
+
+                    if list(dict(branch_value).keys())[0] in self.pre_macro:
+                        stack.append(item[2])
+                    else:
+                        stack.append(item[3])
+                elif isinstance(item, dict):
+                    if 'reverse' in item.keys():
+                        macro_key = [item_key for item_key in item.keys() if item_key != 'reverse'][0]
+                        del self.macro_list[macro_key]
+                        self.pre_macro.remove(macro_key)
+                    else:
+                        self.macro_list.update(item)
+                        self.pre_macro.add(list(item.keys())[0])
+        print('predefine_macro:')
+        pprint(self.pre_macro, indent=2)
+        print('macro list:')
+        pprint(self.macro_list, indent=2)
+        return self.macro_list
+
+
 
     def dump(self, f):
         """
@@ -173,7 +234,17 @@ class PyMacroParser:
         :param f: f为CPP文件路径
         :return:
         """
-        pass
+        macro_list = []
+        result_dict = self.dumpDict()
+        if result_dict:
+            key_list = result_dict.keys()
+            value_list = result_dict.values()
+            for item_key, item_value in zip(key_list, value_list):
+                macro_item = '#define' + ' ' + str(item_key) + ' ' + str(item_value) + '\r\n'
+                macro_list.append(macro_item)
+        with open(f, 'w', encoding='utf-8') as cpp_file:
+            cpp_file.writelines(macro_list)
+
 
     def __search(self, branch, node_id, node_type):
         """
@@ -183,12 +254,12 @@ class PyMacroParser:
         :return: 分支的引用
         """
         print('search branch:', node_id, ' ', node_type)
-        pprint(branch, indent=2)
-        logging.debug('search node_id node_type:' + str(node_id) + str(node_type))
-        logging.debug('search:' + str(branch))
+        # pprint(branch, indent=2)
+        # logging.debug('search node_id node_type:' + str(node_id) + str(node_type))
+        # logging.debug('search:' + str(branch))
         # 分析当前分支
         if not branch:
-            return 0, [0, 0, []]
+            return 0, [0, 0, 0, []]
         # 获得左右分支
         sub_branch_list = [item for item in branch if isinstance(item, list)]
         if len(sub_branch_list) == 2:
@@ -202,14 +273,17 @@ class PyMacroParser:
         if current_dict:
             current_id = current_dict[0]['id']
             current_parent = current_dict[0]['parent']
-            print('current_id, node_id:', current_id, node_id)
+            current_pos = current_dict[0]['pos']
+            # print('current_id, node_id:', current_id, node_id)
             if current_id == node_id:
                 print('match ok', node_id)
-                logging.debug('match ok' + str(node_id))
+                # logging.debug('match ok' + str(node_id))
                 if node_type in [1, 2]:
-                    return 1, [current_id, current_parent, sub_branch_list[node_type - 1]]
+                    return 1, [current_id, current_parent, current_pos, sub_branch_list[node_type - 1]]
+                # -1
                 else:
-                    return 1, [current_id, current_parent, branch]
+                    return 1, [current_id, current_parent, current_pos, sub_branch_list[current_pos - 1]]
+
         # 如果左子树不空
         if len(sub_branch_list) >= 1:
             # 分析左分支
@@ -224,5 +298,5 @@ class PyMacroParser:
             if result != 0:
                 return result, result_branch
 
-        return 0, [0, 0, []]
+        return 0, [0, 0, 0, []]
 
